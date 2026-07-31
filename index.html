@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>Flashcards</title>
+<meta name="description" content="Offline-first flashcard study app" />
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#1F7A63" />
+
+<!-- iOS install support -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Flashcards" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="icon" href="icons/icon-32.png" sizes="32x32" />
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" />
+
+<link rel="stylesheet" href="css/tokens.css" />
+<link rel="stylesheet" href="css/base.css" />
+<link rel="stylesheet" href="css/components.css" />
+</head>
+<body>
+
+<div id="app">
+  <header class="topbar">
+    <button class="icon-btn" id="menuBtn" aria-label="Open menu"></button>
+    <div class="topbar-title" id="titleBtn" role="button" aria-label="Go to Home">Flashcards</div>
+    <button class="icon-btn" id="profileBtn" aria-label="Profile"></button>
+  </header>
+
+  <main id="view"></main>
+</div>
+
+<div class="drawer-scrim" id="drawerScrim"></div>
+<nav class="drawer" id="drawer">
+  <div class="drawer-title">Flashcards</div>
+  <button class="drawer-item" id="navSearch"></button>
+  <button class="drawer-item" id="navAdd"></button>
+</nav>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
