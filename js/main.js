@@ -26,6 +26,19 @@ navAdd.innerHTML = `${icons.bookPlus} Add Flashcard`;
 /* ---------------- theme bootstrap ---------------- */
 applySettingsToDocument(db.getSettings());
 
+/* ---------------- request persistent storage ----------------
+   Reduces the odds the browser silently clears local data under
+   storage pressure. Not fully honored by all iOS versions, but this
+   is the standard, correct signal to send. */
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persisted().then((already) => {
+    if (already) return;
+    navigator.storage.persist().then((granted) => {
+      console.log("[storage] persistence " + (granted ? "granted" : "not granted"));
+    });
+  });
+}
+
 /* ---------------- router ---------------- */
 
 const routes = {
