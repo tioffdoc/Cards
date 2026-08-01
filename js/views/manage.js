@@ -5,13 +5,13 @@ import { openSheet, confirmDialog, toast } from "../ui.js";
 
 let loc = { subjectId: null, topicId: null };
 
-export function renderManage(root, params) {
+export async function renderManage(root, params) {
   if (params && params.subjectId) loc.subjectId = params.subjectId;
   if (!loc.subjectId) loc = { subjectId: null, topicId: null };
-  draw(root);
+  await draw(root);
 }
 
-function draw(root) {
+async function draw(root) {
   if (loc.topicId) return drawFlashcards(root);
   if (loc.subjectId) return drawTopics(root);
   return drawSubjects(root);
@@ -19,8 +19,8 @@ function draw(root) {
 
 /* ---------------- Subjects ---------------- */
 
-function drawSubjects(root) {
-  const subjects = db.getSubjects();
+async function drawSubjects(root) {
+  const [subjects, topics] = await Promise.all([db.getSubjects(), db.getTopics()]);
   root.innerHTML = `
     <div class="row between" style="margin-bottom:10px">
       <h1 style="font-size:var(--fs-h2);font-weight:800">Subjects</h1>
@@ -29,34 +29,38 @@ function drawSubjects(root) {
     <div id="list">${subjects.length ? "" : emptyState("layers", "No subjects yet. Tap + to add one.")}</div>
   `;
   const list = root.querySelector("#list");
-  subjects.forEach((s) => list.appendChild(subjectRow(s)));
+  subjects.forEach((s) => {
+    const topicCount = topics.filter((t) => t.subjectId === s.id).length;
+    list.appendChild(subjectRow(s, topicCount));
+  });
 
   root.querySelector("#addSubject").addEventListener("click", () => {
-    openTextSheet({ title: "New Subject", label: "Subject name", placeholder: "e.g. Cardiology" }, (name) => {
-      const s = db.addSubject(name);
+    openTextSheet({ title: "New Subject", label: "Subject name", placeholder: "e.g. Cardiology" }, async (name) => {
+      const s = await db.addSubject(name);
       loc.subjectId = s.id;
-      draw(root);
+      await draw(root);
     });
   });
 }
 
-function subjectRow(s) {
-  const topicCount = db.getTopics(s.id).length;
+function subjectRow(s, topicCount) {
   const row = document.createElement("div");
   row.className = "list-row has-delete";
+  row.style.position = "relative";
   row.innerHTML = `
     <div class="list-row-main">
       <span class="title">${escapeHTML(s.name)}</span>
       <span class="meta">${topicCount} topic${topicCount === 1 ? "" : "s"}</span>
       ${icon("chevronRight")}
     </div>`;
-  row.querySelector(".list-row-main").addEventListener("click", () => { loc.subjectId = s.id; loc.topicId = null; draw(document.getElementById("view")); });
-  row.addEventListener("contextmenu", (e) => { e.preventDefault(); askDeleteSubject(s); });
+  row.querySelector(".list-row-main").addEventListener("click", async () => {
+    loc.subjectId = s.id; loc.topicId = null;
+    await draw(document.getElementById("view"));
+  });
   const del = document.createElement("button");
   del.className = "icon-btn"; del.style.position = "absolute"; del.style.right = "2px"; del.style.top = "6px";
   del.innerHTML = icon("trash");
   del.addEventListener("click", (e) => { e.stopPropagation(); askDeleteSubject(s); });
-  row.style.position = "relative";
   row.appendChild(del);
   return row;
 }
@@ -65,16 +69,21 @@ function askDeleteSubject(s) {
   confirmDialog({
     title: `Delete "${s.name}"?`,
     message: "This removes the subject and all of its topics and flashcards.",
-    onConfirm: () => { db.deleteSubject(s.id); toast("Subject deleted"); draw(document.getElementById("view")); },
+    onConfirm: async () => {
+      await db.deleteSubject(s.id);
+      toast("Subject deleted");
+      await draw(document.getElementById("view"));
+    },
   });
 }
 
 /* ---------------- Topics ---------------- */
 
-function drawTopics(root) {
-  const subject = db.getSubjects().find((s) => s.id === loc.subjectId);
+async function drawTopics(root) {
+  const subjects = await db.getSubjects();
+  const subject = subjects.find((s) => s.id === loc.subjectId);
   if (!subject) { loc = { subjectId: null, topicId: null }; return drawSubjects(root); }
-  const topics = db.getTopics(subject.id);
+  const [topics, cards] = await Promise.all([db.getTopics(subject.id), db.getFlashcards()]);
 
   root.innerHTML = `
     <button class="btn btn-ghost" id="back" style="padding-left:0;margin-bottom:4px">&larr; Subjects</button>
@@ -85,20 +94,22 @@ function drawTopics(root) {
     <div id="list">${topics.length ? "" : emptyState("layers", "No topics yet. Tap + to add one.")}</div>
   `;
   const list = root.querySelector("#list");
-  topics.forEach((t) => list.appendChild(topicRow(t)));
+  topics.forEach((t) => {
+    const cardCount = cards.filter((c) => c.topicId === t.id).length;
+    list.appendChild(topicRow(t, cardCount));
+  });
 
-  root.querySelector("#back").addEventListener("click", () => { loc.subjectId = null; draw(root); });
+  root.querySelector("#back").addEventListener("click", async () => { loc.subjectId = null; await draw(root); });
   root.querySelector("#addTopic").addEventListener("click", () => {
-    openTextSheet({ title: "New Topic", label: "Topic name", placeholder: "e.g. Arrhythmias" }, (name) => {
-      const t = db.addTopic(subject.id, name);
+    openTextSheet({ title: "New Topic", label: "Topic name", placeholder: "e.g. Arrhythmias" }, async (name) => {
+      const t = await db.addTopic(subject.id, name);
       loc.topicId = t.id;
-      draw(root);
+      await draw(root);
     });
   });
 }
 
-function topicRow(t) {
-  const cardCount = db.getFlashcards(t.id).length;
+function topicRow(t, cardCount) {
   const row = document.createElement("div");
   row.className = "list-row has-delete";
   row.style.position = "relative";
@@ -108,7 +119,10 @@ function topicRow(t) {
       <span class="meta">${cardCount} card${cardCount === 1 ? "" : "s"}</span>
       ${icon("chevronRight")}
     </div>`;
-  row.querySelector(".list-row-main").addEventListener("click", () => { loc.topicId = t.id; draw(document.getElementById("view")); });
+  row.querySelector(".list-row-main").addEventListener("click", async () => {
+    loc.topicId = t.id;
+    await draw(document.getElementById("view"));
+  });
   const del = document.createElement("button");
   del.className = "icon-btn"; del.style.position = "absolute"; del.style.right = "2px"; del.style.top = "6px";
   del.innerHTML = icon("trash");
@@ -117,7 +131,11 @@ function topicRow(t) {
     confirmDialog({
       title: `Delete "${t.name}"?`,
       message: "This removes the topic and all of its flashcards.",
-      onConfirm: () => { db.deleteTopic(t.id); toast("Topic deleted"); draw(document.getElementById("view")); },
+      onConfirm: async () => {
+        await db.deleteTopic(t.id);
+        toast("Topic deleted");
+        await draw(document.getElementById("view"));
+      },
     });
   });
   row.appendChild(del);
@@ -126,11 +144,13 @@ function topicRow(t) {
 
 /* ---------------- Flashcards ---------------- */
 
-function drawFlashcards(root) {
-  const subject = db.getSubjects().find((s) => s.id === loc.subjectId);
-  const topic = db.getTopics().find((t) => t.id === loc.topicId);
+async function drawFlashcards(root) {
+  const [subjects, topics] = await Promise.all([db.getSubjects(), db.getTopics()]);
+  const subject = subjects.find((s) => s.id === loc.subjectId);
+  const topic = topics.find((t) => t.id === loc.topicId);
   if (!subject || !topic) { loc.topicId = null; return drawTopics(root); }
-  const cards = db.getFlashcards(topic.id);
+  const cards = await db.getFlashcards(topic.id);
+  const dateFormat = db.getSettings().dateFormat;
 
   root.innerHTML = `
     <button class="btn btn-ghost" id="back" style="padding-left:0;margin-bottom:4px">&larr; ${escapeHTML(subject.name)}</button>
@@ -141,14 +161,13 @@ function drawFlashcards(root) {
     <div id="list">${cards.length ? "" : emptyState("bookPlus", "No flashcards yet. Tap + to add one.")}</div>
   `;
   const list = root.querySelector("#list");
-  cards.forEach((c) => list.appendChild(cardRow(c)));
+  cards.forEach((c) => list.appendChild(cardRow(c, dateFormat)));
 
-  root.querySelector("#back").addEventListener("click", () => { loc.topicId = null; draw(root); });
+  root.querySelector("#back").addEventListener("click", async () => { loc.topicId = null; await draw(root); });
   root.querySelector("#addCard").addEventListener("click", () => openCardEditor(null, subject.id, topic.id, root));
 }
 
-function cardRow(c) {
-  const dateFormat = db.getSettings().dateFormat;
+function cardRow(c, dateFormat) {
   const row = document.createElement("div");
   row.className = "list-row has-delete";
   row.style.position = "relative";
@@ -167,7 +186,11 @@ function cardRow(c) {
     confirmDialog({
       title: "Delete flashcard?",
       message: "This can't be undone.",
-      onConfirm: () => { db.deleteFlashcard(c.id); toast("Flashcard deleted"); draw(document.getElementById("view")); },
+      onConfirm: async () => {
+        await db.deleteFlashcard(c.id);
+        toast("Flashcard deleted");
+        await draw(document.getElementById("view"));
+      },
     });
   });
   row.appendChild(del);
@@ -186,6 +209,7 @@ function openCardEditor(card, subjectId, topicId, root) {
         <span>Image (optional)</span>
         <input type="file" accept="image/*" id="fImage" />
       </label>
+      <p class="muted" id="imgStatus" style="font-size:var(--fs-caption)"></p>
       <div id="imgPreviewWrap">${card && card.image ? `<img src="${card.image}" style="max-width:100%;border-radius:8px" id="imgPreview"/>` : ""}</div>
       <button class="btn btn-primary btn-block" id="saveCard" style="margin-top:6px">SAVE</button>
       ${isEdit ? `<button class="btn btn-danger btn-block" id="deleteCard">Delete Flashcard</button>` : ""}
@@ -193,31 +217,45 @@ function openCardEditor(card, subjectId, topicId, root) {
   `, {
     onMount: (sheetEl, close) => {
       let imageData = card ? card.image : null;
-      sheetEl.querySelector("#fImage").addEventListener("change", (e) => {
+      const statusEl = sheetEl.querySelector("#imgStatus");
+
+      sheetEl.querySelector("#fImage").addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-          imageData = reader.result;
+        statusEl.textContent = "Compressing image…";
+        try {
+          imageData = await compressImage(file);
           sheetEl.querySelector("#imgPreviewWrap").innerHTML = `<img src="${imageData}" style="max-width:100%;border-radius:8px"/>`;
-        };
-        reader.readAsDataURL(file);
+          statusEl.textContent = `Image ready (${Math.round(imageData.length / 1024)} KB)`;
+        } catch (err) {
+          statusEl.textContent = "Couldn't process that image — try a different one.";
+        }
       });
 
-      sheetEl.querySelector("#saveCard").addEventListener("click", () => {
+      sheetEl.querySelector("#saveCard").addEventListener("click", async () => {
         const front = sheetEl.querySelector("#fFront").value.trim();
         const answer = sheetEl.querySelector("#fAnswer").value.trim();
         const explanation = sheetEl.querySelector("#fExplain").value.trim();
         if (!front || !answer) { toast("Front and Back are required"); return; }
-        if (isEdit) {
-          db.updateFlashcard(card.id, { front, answer, explanation, image: imageData });
-          toast("Flashcard updated");
-        } else {
-          db.addFlashcard({ subjectId, topicId, front, answer, explanation, image: imageData });
-          toast("Flashcard added");
+
+        const saveBtn = sheetEl.querySelector("#saveCard");
+        saveBtn.disabled = true;
+        saveBtn.textContent = "Saving…";
+        try {
+          if (isEdit) {
+            await db.updateFlashcard(card.id, { front, answer, explanation, image: imageData });
+            toast("Flashcard updated");
+          } else {
+            await db.addFlashcard({ subjectId, topicId, front, answer, explanation, image: imageData });
+            toast("Flashcard added");
+          }
+          close();
+          await draw(root);
+        } catch (err) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = "SAVE";
+          toast("Couldn't save — " + (err.message || "please try again"));
         }
-        close();
-        draw(root);
       });
 
       if (isEdit) {
@@ -226,11 +264,45 @@ function openCardEditor(card, subjectId, topicId, root) {
           confirmDialog({
             title: "Delete flashcard?",
             message: "This can't be undone.",
-            onConfirm: () => { db.deleteFlashcard(card.id); toast("Flashcard deleted"); draw(root); },
+            onConfirm: async () => {
+              await db.deleteFlashcard(card.id);
+              toast("Flashcard deleted");
+              await draw(root);
+            },
           });
         });
       }
     },
+  });
+}
+
+// Downscale + re-encode any picked image before storing it, so a single
+// full-resolution phone photo doesn't balloon a flashcard's size. Long
+// edge capped at 1400px, JPEG quality 0.82 — plenty for on-screen review.
+function compressImage(file, maxDim = 1400, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Couldn't read that image"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Couldn't read that image"));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
   });
 }
 

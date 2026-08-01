@@ -18,22 +18,21 @@ export function renderStudy(root, params) {
   state = {
     queue,
     index: 0,
-    phase: "question", // question -> answer -> grade -> difficulty
     startedAt: performance.now(),
     correct: null,
-    results: [], // {correct}
+    results: [],
   };
 
   renderCard(root);
 }
 
-function currentCard() {
+async function currentCard() {
   const id = state.queue[state.index];
   return db.getFlashcard(id);
 }
 
-function renderCard(root) {
-  const card = currentCard();
+async function renderCard(root) {
+  const card = await currentCard();
   const pct = Math.round((state.index / state.queue.length) * 100);
 
   if (!card) { advance(root); return; }
@@ -71,9 +70,8 @@ function renderCard(root) {
 
   root.querySelector("#showAnswer").addEventListener("click", () => {
     state.elapsedMs = performance.now() - state.startedAt;
-    state.phase = "grade";
     root.querySelector("#flipCard").classList.add("flipped");
-    renderAfterAnswer(root);
+    renderAfterAnswer(root, card);
   });
 
   const t0 = performance.now();
@@ -84,7 +82,7 @@ function renderCard(root) {
   }, 500);
 }
 
-function renderAfterAnswer(root) {
+function renderAfterAnswer(root, card) {
   const holder = root.querySelector("#afterAnswer");
   holder.innerHTML = `
     <p class="muted mono" style="margin-top:10px;font-size:var(--fs-caption)">Answered in ${formatDuration(state.elapsedMs)}</p>
@@ -97,12 +95,12 @@ function renderAfterAnswer(root) {
   holder.querySelectorAll("[data-correct]").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.correct = btn.dataset.correct === "1";
-      renderDifficulty(root, holder);
+      renderDifficulty(root, holder, card);
     });
   });
 }
 
-function renderDifficulty(root, holder) {
+function renderDifficulty(root, holder, card) {
   holder.innerHTML = `
     <div class="section-label" style="margin-top:12px">Rate the difficulty</div>
     <div class="diff-grid">
@@ -113,20 +111,23 @@ function renderDifficulty(root, holder) {
     </div>
   `;
   holder.querySelectorAll("[data-d]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const card = currentCard();
-      db.addLog({
-        flashcardId: card.id,
-        topicId: card.topicId,
-        subjectId: card.subjectId,
-        correct: state.correct,
-        responseMs: Math.round(state.elapsedMs),
-        difficulty: btn.dataset.d,
-      });
+    btn.addEventListener("click", async () => {
+      btn.parentElement.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      try {
+        await db.addLog({
+          flashcardId: card.id,
+          topicId: card.topicId,
+          subjectId: card.subjectId,
+          correct: state.correct,
+          responseMs: Math.round(state.elapsedMs),
+          difficulty: btn.dataset.d,
+        });
+      } catch (e) {
+        toast("Couldn't save that result — " + (e.message || "please try again"));
+      }
       state.results.push({ correct: state.correct });
       clearInterval(state._timerHandle);
       state.index += 1;
-      state.phase = "question";
       state.startedAt = performance.now();
       if (state.index >= state.queue.length) { renderSummary(root); }
       else { renderCard(root); }

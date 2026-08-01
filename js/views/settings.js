@@ -1,4 +1,5 @@
 import * as db from "../db.js";
+import { formatDate } from "../utils.js";
 import { icon } from "../icons.js";
 import { toast, confirmDialog } from "../ui.js";
 import { goTo } from "../nav.js";
@@ -18,8 +19,16 @@ export function applySettingsToDocument(settings) {
   document.documentElement.setAttribute("data-font-size", settings.fontSize);
 }
 
+function formatDateTime(iso, dateFormat) {
+  if (!iso) return "Never";
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${formatDate(d, dateFormat)} at ${time}`;
+}
+
 export function renderSettingsSection(container) {
   const settings = db.getSettings();
+  const status = db.getBackupStatus();
 
   container.innerHTML = `
     <div class="settings-row">
@@ -54,7 +63,14 @@ export function renderSettingsSection(container) {
     </div>
 
     <div class="settings-row" style="display:block">
-      <div class="label" style="margin-bottom:8px">Backup and restore</div>
+      <div class="label" style="margin-bottom:6px">Backup and restore</div>
+      <p class="muted" style="font-size:var(--fs-caption);margin:0 0 12px">
+        Last exported: ${formatDateTime(status.lastExportAt, settings.dateFormat)}<br/>
+        Last restored: ${formatDateTime(status.lastImportAt, settings.dateFormat)}
+      </p>
+      <p class="muted" style="font-size:var(--fs-caption);margin:0 0 12px">
+        Syncing devices manually: export here, send yourself the file (AirDrop, email, iCloud/Google Drive), then Restore on the other device. Always export from whichever device has the newest data first — Restore replaces everything on the device you run it on.
+      </p>
       <div class="row" style="gap:10px">
         <button class="btn btn-secondary" id="exportBtn" style="flex:1">${icon("download")} Export</button>
         <button class="btn btn-secondary" id="importBtn" style="flex:1">${icon("upload")} Restore</button>
@@ -83,11 +99,11 @@ export function renderSettingsSection(container) {
 
   container.querySelectorAll('input[name="dateFmt"]').forEach((r) => r.addEventListener("change", (e) => {
     db.setSettings({ dateFormat: e.target.value });
-    toast("Date format updated");
+    renderSettingsSection(container);
   }));
 
-  container.querySelector("#exportBtn").addEventListener("click", () => {
-    const data = db.exportAll();
+  container.querySelector("#exportBtn").addEventListener("click", async () => {
+    const data = await db.exportAll();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -98,7 +114,9 @@ export function renderSettingsSection(container) {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+    db.setBackupStatus({ lastExportAt: new Date().toISOString() });
     toast("Backup exported");
+    renderSettingsSection(container);
   });
 
   const fileInput = container.querySelector("#importFile");
@@ -114,8 +132,9 @@ export function renderSettingsSection(container) {
           title: "Restore backup?",
           message: "This replaces your current subjects, topics, flashcards, and progress with the contents of this file.",
           confirmLabel: "Restore",
-          onConfirm: () => {
-            db.importAll(data);
+          onConfirm: async () => {
+            await db.importAll(data);
+            db.setBackupStatus({ lastImportAt: new Date().toISOString() });
             const s = db.getSettings();
             applySettingsToDocument(s);
             toast("Backup restored");

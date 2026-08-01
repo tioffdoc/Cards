@@ -36,12 +36,17 @@ const routes = {
   profile: renderProfile,
 };
 
-function goTo(route, params = {}) {
+async function goTo(route, params = {}) {
   const renderer = routes[route] || routes.home;
   window.scrollTo(0, 0);
   closeDrawer();
-  renderer(view, params);
   view.dataset.route = route;
+  try {
+    await renderer(view, params);
+  } catch (err) {
+    console.error("Failed to render", route, err);
+    view.innerHTML = `<div class="center-empty"><p>Something went wrong loading this screen. Try again.</p></div>`;
+  }
 }
 registerRouter(goTo);
 
@@ -62,9 +67,19 @@ profileBtn.addEventListener("click", () => goTo("profile"));
 /* ---------------- initial route ---------------- */
 goTo("home");
 
-/* ---------------- service worker (offline support) ---------------- */
+/* ---------------- service worker (offline support + auto-update) ---------------- */
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").catch((err) => console.error("SW registration failed", err));
+
+    // When a newly-deployed service worker takes over, the page it's already
+    // running is still the old code in memory — reload once, silently, so
+    // future fixes show up automatically instead of needing a force-quit.
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    });
   });
 }

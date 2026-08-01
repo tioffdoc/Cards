@@ -16,15 +16,13 @@ export function renderSearch(root) {
   draw(results, "");
 }
 
-function draw(results, q) {
+async function draw(results, q) {
   if (!q) {
     results.innerHTML = `<div class="center-empty">${icon("search")}<p>Start typing to search your flashcards.</p></div>`;
     return;
   }
 
-  const subjects = db.getSubjects();
-  const topics = db.getTopics();
-  const cards = db.getFlashcards();
+  const [subjects, topics, cards] = await Promise.all([db.getSubjects(), db.getTopics(), db.getFlashcards()]);
 
   const matchSubjects = subjects.filter((s) => s.name.toLowerCase().includes(q));
   const matchTopics = topics.filter((t) => t.name.toLowerCase().includes(q));

@@ -8,13 +8,12 @@ import { toast } from "../ui.js";
 // local, ephemeral state for the Daily Goal builder (resets per visit)
 let goal = { count: 20, subjectIds: [], topicIds: [], mode: "all", subMode: "randomAll" };
 
-export function renderHome(root) {
+export async function renderHome(root) {
   const profile = db.getProfile();
   const settings = db.getSettings();
-  const subjects = db.getSubjects();
-  const topics = db.getTopics();
-  const flashcards = db.getFlashcards();
-  const logs = db.getLogs();
+  const [subjects, topics, flashcards, logs] = await Promise.all([
+    db.getSubjects(), db.getTopics(), db.getFlashcards(), db.getLogs(),
+  ]);
 
   const today = computeTodayStats(logs, topics);
   const week = computeWeeklyStats(logs, topics);
@@ -117,7 +116,7 @@ function renderGoalBuilder(el, subjects, topics, flashcards, logs) {
   el.innerHTML = `
     <label class="field">
       <span>Number of flashcards</span>
-      <input type="number" min="1" max="200" id="goalCount" value="${goal.count}" />
+      <input type="number" min="1" max="500" id="goalCount" value="${goal.count}" />
     </label>
 
     <div class="section-label" style="margin-top:14px">Subjects</div>
@@ -160,7 +159,6 @@ function renderGoalBuilder(el, subjects, topics, flashcards, logs) {
   el.querySelectorAll("[data-subject]").forEach((btn) => btn.addEventListener("click", () => {
     const id = btn.dataset.subject;
     goal.subjectIds = toggle(goal.subjectIds, id);
-    // drop topic selections that no longer belong to a selected subject
     const allowed = topics.filter((t) => goal.subjectIds.length === 0 || goal.subjectIds.includes(t.subjectId)).map((t) => t.id);
     goal.topicIds = goal.topicIds.filter((id) => allowed.includes(id));
     renderGoalBuilder(el, subjects, topics, flashcards, logs);
