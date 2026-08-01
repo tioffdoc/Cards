@@ -1,6 +1,16 @@
 // utils.js — date math, formatting, and the stats/analysis calculations
 // shared by the Home screen and Performance Analysis.
 
+// Flashcards now store an `images` array. Older cards saved before this
+// change have a single `image` field instead — this normalizes either
+// shape into an array so callers never have to check both.
+export function cardImages(card) {
+  if (!card) return [];
+  if (Array.isArray(card.images) && card.images.length) return card.images;
+  if (card.image) return [card.image];
+  return [];
+}
+
 export function getGreeting(name) {
   const h = new Date().getHours();
   const part = h < 12 ? "Good Morning" : h < 18 ? "Good Afternoon" : "Good Evening";

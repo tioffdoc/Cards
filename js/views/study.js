@@ -1,5 +1,5 @@
 import * as db from "../db.js";
-import { formatDuration } from "../utils.js";
+import { formatDuration, cardImages } from "../utils.js";
 import { icon } from "../icons.js";
 import { goTo } from "../nav.js";
 import { confirmDialog, toast } from "../ui.js";
@@ -57,7 +57,7 @@ async function renderCard(root) {
           <div class="kicker">Answer</div>
           <div class="content">
             ${escapeHTML(card.answer)}
-            ${card.image ? `<img src="${card.image}" alt="" />` : ""}
+            ${cardImages(card).map((src) => `<img src="${src}" alt="" />`).join("")}
             ${card.explanation ? `<div class="explain">${escapeHTML(card.explanation)}</div>` : ""}
           </div>
           <div id="afterAnswer"></div>

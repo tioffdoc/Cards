@@ -239,7 +239,7 @@ export async function getFlashcards(topicId = null) {
 export async function getFlashcard(id) {
   return (await getOne("flashcards", id)) || null;
 }
-export async function addFlashcard({ topicId, subjectId, front, answer, explanation, image }) {
+export async function addFlashcard({ topicId, subjectId, front, answer, explanation, images }) {
   const card = {
     id: uid(),
     topicId,
@@ -247,7 +247,7 @@ export async function addFlashcard({ topicId, subjectId, front, answer, explanat
     front,
     answer,
     explanation: explanation || "",
-    image: image || null,
+    images: Array.isArray(images) ? images : [],
     createdAt: new Date().toISOString(),
   };
   await putOne("flashcards", card);

@@ -1,5 +1,5 @@
 import * as db from "../db.js";
-import { formatDate } from "../utils.js";
+import { formatDate, cardImages } from "../utils.js";
 import { icon } from "../icons.js";
 import { openSheet, confirmDialog, toast } from "../ui.js";
 
@@ -168,13 +168,17 @@ async function drawFlashcards(root) {
 }
 
 function cardRow(c, dateFormat) {
+  const imgCount = cardImages(c).length;
   const row = document.createElement("div");
   row.className = "list-row has-delete";
   row.style.position = "relative";
   row.innerHTML = `
     <div class="list-row-main">
       <span class="title" style="max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHTML(c.front)}</span>
-      <span class="meta">Added ${formatDate(c.createdAt, dateFormat)}</span>
+      <span class="meta">
+        ${imgCount ? `<span class="row" style="display:inline-flex;gap:3px;vertical-align:middle;margin-right:8px">${icon("image")} ${imgCount}</span>` : ""}
+        Added ${formatDate(c.createdAt, dateFormat)}
+      </span>
       ${icon("chevronRight")}
     </div>`;
   row.querySelector(".list-row-main").addEventListener("click", () => openCardEditor(c, c.subjectId, c.topicId, document.getElementById("view")));
@@ -206,30 +210,51 @@ function openCardEditor(card, subjectId, topicId, root) {
       <label class="field"><span>Back — Answer</span><textarea id="fAnswer">${card ? escapeHTML(card.answer) : ""}</textarea></label>
       <label class="field"><span>Explanation (optional)</span><textarea id="fExplain">${card ? escapeHTML(card.explanation) : ""}</textarea></label>
       <label class="field">
-        <span>Image (optional)</span>
-        <input type="file" accept="image/*" id="fImage" />
+        <span>Images (optional — pick as many as you like)</span>
+        <input type="file" accept="image/*" multiple id="fImage" />
       </label>
       <p class="muted" id="imgStatus" style="font-size:var(--fs-caption)"></p>
-      <div id="imgPreviewWrap">${card && card.image ? `<img src="${card.image}" style="max-width:100%;border-radius:8px" id="imgPreview"/>` : ""}</div>
+      <div id="imgGrid" class="img-grid"></div>
       <button class="btn btn-primary btn-block" id="saveCard" style="margin-top:6px">SAVE</button>
       ${isEdit ? `<button class="btn btn-danger btn-block" id="deleteCard">Delete Flashcard</button>` : ""}
     </div>
   `, {
     onMount: (sheetEl, close) => {
-      let imageData = card ? card.image : null;
+      let images = cardImages(card); // handles legacy single-image cards too
       const statusEl = sheetEl.querySelector("#imgStatus");
+      const gridEl = sheetEl.querySelector("#imgGrid");
+
+      function renderGrid() {
+        gridEl.innerHTML = images.map((src, i) => `
+          <div class="img-thumb">
+            <img src="${src}" alt="" />
+            <button type="button" class="img-thumb-remove" data-remove="${i}" aria-label="Remove image">${icon("x")}</button>
+          </div>
+        `).join("");
+        gridEl.querySelectorAll("[data-remove]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            images.splice(Number(btn.dataset.remove), 1);
+            renderGrid();
+            statusEl.textContent = images.length ? `${images.length} image${images.length === 1 ? "" : "s"} attached` : "";
+          });
+        });
+      }
+      renderGrid();
+      if (images.length) statusEl.textContent = `${images.length} image${images.length === 1 ? "" : "s"} attached`;
 
       sheetEl.querySelector("#fImage").addEventListener("change", async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        statusEl.textContent = "Compressing image…";
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+        statusEl.textContent = files.length > 1 ? `Compressing ${files.length} images…` : "Compressing image…";
         try {
-          imageData = await compressImage(file);
-          sheetEl.querySelector("#imgPreviewWrap").innerHTML = `<img src="${imageData}" style="max-width:100%;border-radius:8px"/>`;
-          statusEl.textContent = `Image ready (${Math.round(imageData.length / 1024)} KB)`;
+          const compressed = await Promise.all(files.map((f) => compressImage(f)));
+          images.push(...compressed);
+          renderGrid();
+          statusEl.textContent = `${images.length} image${images.length === 1 ? "" : "s"} attached`;
         } catch (err) {
-          statusEl.textContent = "Couldn't process that image — try a different one.";
+          statusEl.textContent = "Couldn't process one of those images — try again.";
         }
+        e.target.value = "";
       });
 
       sheetEl.querySelector("#saveCard").addEventListener("click", async () => {
@@ -243,10 +268,10 @@ function openCardEditor(card, subjectId, topicId, root) {
         saveBtn.textContent = "Saving…";
         try {
           if (isEdit) {
-            await db.updateFlashcard(card.id, { front, answer, explanation, image: imageData });
+            await db.updateFlashcard(card.id, { front, answer, explanation, images });
             toast("Flashcard updated");
           } else {
-            await db.addFlashcard({ subjectId, topicId, front, answer, explanation, image: imageData });
+            await db.addFlashcard({ subjectId, topicId, front, answer, explanation, images });
             toast("Flashcard added");
           }
           close();

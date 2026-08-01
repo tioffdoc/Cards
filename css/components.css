@@ -227,6 +227,16 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
 .swatch.selected { border-color: var(--ink); }
 .swatch svg { width: 18px; height: 18px; color: #fff; }
 
+.img-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.img-thumb { position: relative; width: 84px; height: 84px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+.img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.img-thumb-remove {
+  position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55); border: none; color: #fff; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.img-thumb-remove svg { width: 12px; height: 12px; }
+
 .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 2px; border-bottom: 1px solid var(--border); }
 .settings-row:last-child { border-bottom: none; }
 .settings-row .label { font-weight: 600; }
