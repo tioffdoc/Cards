@@ -2,7 +2,7 @@
 // offline after the first visit. Bump CACHE_NAME whenever files change
 // to invalidate old caches on the next load.
 
-const CACHE_NAME = "flashcards-cache-v4";
+const CACHE_NAME = "flashcards-cache-v5";
 
 const PRECACHE_URLS = [
   "./",
