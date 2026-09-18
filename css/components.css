@@ -63,7 +63,7 @@
 /* ---------- forms ---------- */
 label.field { display: flex; flex-direction: column; gap: 6px; }
 label.field span { font-size: var(--fs-caption); font-weight: 700; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .05em; }
-input[type="text"], input[type="number"], input[type="date"], textarea, select {
+input[type="text"], input[type="number"], input[type="date"], input[type="email"], input[type="password"], textarea, select {
   font-family: inherit;
   font-size: var(--fs-body);
   color: var(--ink);
@@ -241,3 +241,28 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
 .settings-row:last-child { border-bottom: none; }
 .settings-row .label { font-weight: 600; }
 .settings-row .sub { font-size: var(--fs-caption); color: var(--ink-muted); }
+
+/* ---------------- desktop / mouse interaction polish ----------------
+   Pointer cursors always apply (harmless on touch). Hover effects are
+   gated to devices that actually support hover, so a tap on a phone
+   never leaves a button looking "stuck" in its hover state. */
+.btn, .icon-btn, .chip, .segmented button, .swatch, .drawer-item,
+.list-row-main, .list-row-delete, .diff-btn, .grade-btn, .btn-fab,
+.radio-row, .img-thumb-remove {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .btn-primary:hover { background: var(--accent-strong); }
+  .btn-secondary:hover, .btn-ghost:hover { background: var(--surface-alt); }
+  .btn-danger:hover { filter: brightness(0.95); }
+  .icon-btn:hover { background: var(--surface-alt); }
+  .chip:hover:not(.selected) { border-color: var(--accent); }
+  .swatch:hover { transform: scale(1.06); }
+  .drawer-item:hover { background: var(--surface-alt); }
+  .list-row-main:hover { background: var(--surface-alt); }
+  .list-row-delete:hover { filter: brightness(1.1); }
+  .btn-fab:hover { background: var(--accent-strong); }
+  .segmented button:hover:not(.active) { color: var(--ink); }
+  label.radio-row:hover { background: var(--surface-alt); border-radius: var(--radius-sm); }
+}

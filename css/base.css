@@ -154,5 +154,9 @@ main#view {
 .center-empty svg { width: 40px; height: 40px; color: var(--ink-faint); margin-bottom: var(--gap-sm); }
 
 @media (min-width: 720px) {
-  main#view { padding-top: var(--gap-lg); }
+  main#view { padding-top: var(--gap-lg); max-width: 760px; }
+}
+
+@media (min-width: 1080px) {
+  main#view { max-width: 860px; }
 }
