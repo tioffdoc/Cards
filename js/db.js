@@ -8,12 +8,26 @@
 //
 // Settings / profile stay in localStorage — they're tiny, and reading them
 // synchronously on load avoids a flash of the wrong theme before paint.
+//
+// Every subject/topic/flashcard carries `updatedAt` (epoch ms) and
+// `deleted` (bool). These exist for optional cloud sync (see cloud.js):
+// deletes are soft (tombstoned, not physically removed) so that if this
+// device is offline when a delete happens elsewhere, it still finds out
+// about it later instead of the item silently reappearing; `updatedAt`
+// lets sync decide which of two conflicting copies of a record is newer.
+// None of this changes local-only behavior — getSubjects()/getTopics()/
+// getFlashcards() still return exactly what the UI expects, with
+// tombstones filtered out.
 
 const DB_NAME = "flashcards-db";
 const DB_VERSION = 1;
 const STORES = ["subjects", "topics", "flashcards", "logs"];
 
-const LS_KEYS = { settings: "ff.settings", profile: "ff.profile", backupStatus: "ff.backupStatus" };
+const LS_KEYS = {
+  settings: "ff.settings",
+  profile: "ff.profile",
+  backupStatus: "ff.backupStatus",
+};
 const DEFAULT_SETTINGS = {
   theme: "light",
   accent: "teal",
@@ -23,6 +37,27 @@ const DEFAULT_SETTINGS = {
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+/* ---------------- cloud-sync mutation hook ----------------
+   cloud.js registers itself here (only once signed in) so every local,
+   user-driven write also gets pushed to the cloud. Writes that originate
+   FROM the cloud pull path never go through this — they use the separate
+   putRawIfNewer()/patchRawFields() functions below, which never notify —
+   otherwise a pulled remote change would immediately get pushed straight
+   back, looping. When nobody's registered (the default), this is a no-op,
+   so local-only use is completely unaffected. */
+let mutationHook = null;
+export function setMutationHook(fn) {
+  mutationHook = fn;
+}
+function notify(store, item) {
+  if (!mutationHook) return;
+  try {
+    mutationHook(store, item);
+  } catch (e) {
+    console.error("db: mutation hook failed", e);
+  }
 }
 
 /* ---------------- IndexedDB plumbing ---------------- */
@@ -114,13 +149,6 @@ async function putOne(store, item) {
   return item;
 }
 
-async function deleteOne(store, id) {
-  const idb = await openDB();
-  const tx = idb.transaction(store, "readwrite");
-  tx.objectStore(store).delete(id);
-  await txDone(tx);
-}
-
 async function deleteMany(store, ids) {
   if (!ids.length) return;
   const idb = await openDB();
@@ -173,16 +201,46 @@ export function getProfile() {
   return lsRead(LS_KEYS.profile, { name: "" });
 }
 export function setProfile(profile) {
-  lsWrite(LS_KEYS.profile, profile);
+  const next = { ...profile, updatedAt: Date.now() };
+  lsWrite(LS_KEYS.profile, next);
+  notify("profile", next);
+  return next;
+}
+// Used only by cloud.js when a pulled remote profile wins a conflict —
+// writes without notifying, so it never bounces straight back to the cloud.
+export function applyRemoteProfile(remoteProfile) {
+  const current = getProfile();
+  if ((remoteProfile.updatedAt || 0) <= (current.updatedAt || 0)) return false;
+  lsWrite(LS_KEYS.profile, remoteProfile);
+  return true;
+}
+// Used only by cloud.js: persists a (freshly timestamped) profile straight
+// to localStorage without calling notify() — mirrors putRawIfNewer for the
+// IndexedDB-backed stores, so a legacy profile with no updatedAt yet gets a
+// timestamp saved locally before being pushed to the cloud, without
+// bouncing back through the mutation hook as a second push.
+export function putRawProfile(item) {
+  lsWrite(LS_KEYS.profile, item);
 }
 
 export function getSettings() {
   return { ...DEFAULT_SETTINGS, ...lsRead(LS_KEYS.settings, {}) };
 }
 export function setSettings(patch) {
-  const next = { ...getSettings(), ...patch };
+  const next = { ...getSettings(), ...patch, updatedAt: Date.now() };
   lsWrite(LS_KEYS.settings, next);
+  notify("settings", next);
   return next;
+}
+export function applyRemoteSettings(remoteSettings) {
+  const current = getSettings();
+  if ((remoteSettings.updatedAt || 0) <= (current.updatedAt || 0)) return false;
+  lsWrite(LS_KEYS.settings, { ...DEFAULT_SETTINGS, ...remoteSettings });
+  return true;
+}
+// Used only by cloud.js: same as putRawProfile above, but for settings.
+export function putRawSettings(item) {
+  lsWrite(LS_KEYS.settings, { ...DEFAULT_SETTINGS, ...item });
 }
 
 export function getBackupStatus() {
@@ -197,47 +255,81 @@ export function setBackupStatus(patch) {
 /* ---------------- subjects (async) ---------------- */
 
 export async function getSubjects() {
+  return (await getAll("subjects")).filter((s) => !s.deleted);
+}
+// Includes soft-deleted tombstones — used by cloud sync only.
+export async function getSubjectsRaw() {
   return getAll("subjects");
 }
 export async function addSubject(name) {
-  const subj = { id: uid(), name };
+  const subj = { id: uid(), name, updatedAt: Date.now(), deleted: false };
   await putOne("subjects", subj);
+  notify("subjects", subj);
   return subj;
 }
 export async function deleteSubject(id) {
-  const topics = (await getAll("topics")).filter((t) => t.subjectId === id);
+  const now = Date.now();
+  const topics = (await getAll("topics")).filter((t) => t.subjectId === id && !t.deleted);
   const topicIds = topics.map((t) => t.id);
-  const cards = (await getAll("flashcards")).filter((c) => topicIds.includes(c.topicId));
-  await deleteMany("flashcards", cards.map((c) => c.id));
-  await deleteMany("topics", topicIds);
-  await deleteOne("subjects", id);
+  const cards = (await getAll("flashcards")).filter((c) => topicIds.includes(c.topicId) && !c.deleted);
+
+  for (const c of cards) {
+    const tomb = { ...c, deleted: true, updatedAt: now };
+    await putOne("flashcards", tomb);
+    notify("flashcards", tomb);
+  }
+  for (const t of topics) {
+    const tomb = { ...t, deleted: true, updatedAt: now };
+    await putOne("topics", tomb);
+    notify("topics", tomb);
+  }
+  const existing = await getOne("subjects", id);
+  const tomb = { ...(existing || { id }), deleted: true, updatedAt: now };
+  await putOne("subjects", tomb);
+  notify("subjects", tomb);
 }
 
 /* ---------------- topics (async) ---------------- */
 
 export async function getTopics(subjectId = null) {
-  const all = await getAll("topics");
+  const all = (await getAll("topics")).filter((t) => !t.deleted);
   return subjectId ? all.filter((t) => t.subjectId === subjectId) : all;
 }
+export async function getTopicsRaw() {
+  return getAll("topics");
+}
 export async function addTopic(subjectId, name) {
-  const topic = { id: uid(), subjectId, name };
+  const topic = { id: uid(), subjectId, name, updatedAt: Date.now(), deleted: false };
   await putOne("topics", topic);
+  notify("topics", topic);
   return topic;
 }
 export async function deleteTopic(id) {
-  const cards = (await getAll("flashcards")).filter((c) => c.topicId === id);
-  await deleteMany("flashcards", cards.map((c) => c.id));
-  await deleteOne("topics", id);
+  const now = Date.now();
+  const cards = (await getAll("flashcards")).filter((c) => c.topicId === id && !c.deleted);
+  for (const c of cards) {
+    const tomb = { ...c, deleted: true, updatedAt: now };
+    await putOne("flashcards", tomb);
+    notify("flashcards", tomb);
+  }
+  const existing = await getOne("topics", id);
+  const tomb = { ...(existing || { id }), deleted: true, updatedAt: now };
+  await putOne("topics", tomb);
+  notify("topics", tomb);
 }
 
 /* ---------------- flashcards (async) ---------------- */
 
 export async function getFlashcards(topicId = null) {
-  const all = await getAll("flashcards");
+  const all = (await getAll("flashcards")).filter((c) => !c.deleted);
   return topicId ? all.filter((c) => c.topicId === topicId) : all;
 }
+export async function getFlashcardsRaw() {
+  return getAll("flashcards");
+}
 export async function getFlashcard(id) {
-  return (await getOne("flashcards", id)) || null;
+  const card = await getOne("flashcards", id);
+  return card && !card.deleted ? card : null;
 }
 export async function addFlashcard({ topicId, subjectId, front, answer, explanation, images }) {
   const card = {
@@ -249,37 +341,78 @@ export async function addFlashcard({ topicId, subjectId, front, answer, explanat
     explanation: explanation || "",
     images: Array.isArray(images) ? images : [],
     createdAt: new Date().toISOString(),
+    updatedAt: Date.now(),
+    deleted: false,
   };
   await putOne("flashcards", card);
+  notify("flashcards", card);
   return card;
 }
 export async function updateFlashcard(id, patch) {
   const existing = await getOne("flashcards", id);
   if (!existing) return null;
-  const updated = { ...existing, ...patch };
+  const updated = { ...existing, ...patch, updatedAt: Date.now() };
   await putOne("flashcards", updated);
+  notify("flashcards", updated);
   return updated;
 }
 export async function deleteFlashcard(id) {
-  await deleteOne("flashcards", id);
+  const existing = await getOne("flashcards", id);
+  const tomb = { ...(existing || { id }), deleted: true, updatedAt: Date.now() };
+  await putOne("flashcards", tomb);
+  notify("flashcards", tomb);
 }
 
 /* ---------------- study logs (async) ---------------- */
+// Logs are append-only (never edited or deleted), so they need no
+// tombstones — a plain union by id is always safe.
 
 export async function getLogs() {
   return getAll("logs");
 }
 export async function addLog(entry) {
-  const log = { id: uid(), date: new Date().toISOString(), ...entry };
+  const log = { id: uid(), date: new Date().toISOString(), updatedAt: Date.now(), ...entry };
   await putOne("logs", log);
+  notify("logs", log);
   return log;
+}
+
+/* ---------------- cloud-sync raw helpers ----------------
+   Used only by cloud.js. These bypass notify() entirely (pull-path
+   writes must never re-trigger a push) and apply a plain
+   last-write-wins rule keyed on `updatedAt`. */
+
+export async function putRawIfNewer(store, remoteItem) {
+  const idb = await openDB();
+  const tx = idb.transaction(store, "readwrite");
+  const os = tx.objectStore(store);
+  const existing = await reqToPromise(os.get(remoteItem.id));
+  let applied = false;
+  if (!existing || (remoteItem.updatedAt || 0) > (existing.updatedAt || 0)) {
+    os.put(remoteItem);
+    applied = true;
+  }
+  await txDone(tx);
+  return applied;
+}
+
+// Enriches an already-written record with extra fields (used to attach a
+// flashcard's images, fetched separately from Firestore) without touching
+// updatedAt or firing the mutation hook.
+export async function patchRawFields(store, id, patch) {
+  const idb = await openDB();
+  const tx = idb.transaction(store, "readwrite");
+  const os = tx.objectStore(store);
+  const existing = await reqToPromise(os.get(id));
+  if (existing) os.put({ ...existing, ...patch });
+  await txDone(tx);
 }
 
 /* ---------------- backup / restore ---------------- */
 
 export async function exportAll() {
   const [subjects, topics, flashcards, logs] = await Promise.all([
-    getAll("subjects"), getAll("topics"), getAll("flashcards"), getAll("logs"),
+    getSubjects(), getTopics(), getFlashcards(), getLogs(),
   ]);
   return {
     exportedAt: new Date().toISOString(),
@@ -292,12 +425,14 @@ export async function exportAll() {
 
 export async function importAll(data) {
   if (!data || typeof data !== "object") throw new Error("Invalid backup file");
-  if (Array.isArray(data.subjects)) { await clearStore("subjects"); await putMany("subjects", data.subjects); }
-  if (Array.isArray(data.topics)) { await clearStore("topics"); await putMany("topics", data.topics); }
-  if (Array.isArray(data.flashcards)) { await clearStore("flashcards"); await putMany("flashcards", data.flashcards); }
-  if (Array.isArray(data.logs)) { await clearStore("logs"); await putMany("logs", data.logs); }
-  if (data.settings) lsWrite(LS_KEYS.settings, { ...DEFAULT_SETTINGS, ...data.settings });
-  if (data.profile) lsWrite(LS_KEYS.profile, data.profile);
+  const now = Date.now();
+  const stamp = (arr) => (arr || []).map((item) => ({ ...item, updatedAt: now, deleted: false }));
+  if (Array.isArray(data.subjects)) { await clearStore("subjects"); await putMany("subjects", stamp(data.subjects)); }
+  if (Array.isArray(data.topics)) { await clearStore("topics"); await putMany("topics", stamp(data.topics)); }
+  if (Array.isArray(data.flashcards)) { await clearStore("flashcards"); await putMany("flashcards", stamp(data.flashcards)); }
+  if (Array.isArray(data.logs)) { await clearStore("logs"); await putMany("logs", (data.logs || []).map((l) => ({ ...l, updatedAt: now }))); }
+  if (data.settings) lsWrite(LS_KEYS.settings, { ...DEFAULT_SETTINGS, ...data.settings, updatedAt: now });
+  if (data.profile) lsWrite(LS_KEYS.profile, { ...data.profile, updatedAt: now });
 }
 
 export async function wipeAll() {
