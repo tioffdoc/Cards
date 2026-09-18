@@ -1,4 +1,5 @@
 import * as db from "./db.js";
+import * as cloud from "./cloud.js";
 import { icons } from "./icons.js";
 import { registerRouter, registerDrawer } from "./nav.js";
 import { applySettingsToDocument } from "./views/settings.js";
@@ -25,6 +26,12 @@ navAdd.innerHTML = `${icons.bookPlus} Add Flashcard`;
 
 /* ---------------- theme bootstrap ---------------- */
 applySettingsToDocument(db.getSettings());
+
+/* ---------------- cloud sync (opt-in) ----------------
+   No-op until js/firebase-config.js has real values — see README.md.
+   When configured, this signs the user back in on app start if they
+   were already logged in, and keeps local data synced in the background. */
+cloud.init({ onSettingsChanged: applySettingsToDocument });
 
 /* ---------------- request persistent storage ----------------
    Reduces the odds the browser silently clears local data under
