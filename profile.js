@@ -1,6 +1,7 @@
 import * as db from "../db.js";
 import { toast } from "../ui.js";
 import { renderSettingsSection } from "./settings.js";
+import { renderAccountSection } from "./account.js";
 import { icon } from "../icons.js";
 
 export function renderProfile(root) {
@@ -18,6 +19,10 @@ export function renderProfile(root) {
       </section>
 
       <section class="card">
+        <div id="accountBody"></div>
+      </section>
+
+      <section class="card">
         <div class="card-header"><h2>Settings</h2></div>
         <div id="settingsBody"></div>
       </section>
@@ -30,6 +35,7 @@ export function renderProfile(root) {
     toast("Name saved");
   });
 
+  renderAccountSection(root.querySelector("#accountBody"));
   renderSettingsSection(root.querySelector("#settingsBody"));
 }
 

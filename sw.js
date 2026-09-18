@@ -2,7 +2,7 @@
 // offline after the first visit. Bump CACHE_NAME whenever files change
 // to invalidate old caches on the next load.
 
-const CACHE_NAME = "flashcards-cache-v5";
+const CACHE_NAME = "flashcards-cache-v6";
 
 const PRECACHE_URLS = [
   "./",
@@ -13,6 +13,8 @@ const PRECACHE_URLS = [
   "css/components.css",
   "js/main.js",
   "js/db.js",
+  "js/cloud.js",
+  "js/firebase-config.js",
   "js/utils.js",
   "js/charts.js",
   "js/icons.js",
@@ -24,6 +26,7 @@ const PRECACHE_URLS = [
   "js/views/search.js",
   "js/views/profile.js",
   "js/views/settings.js",
+  "js/views/account.js",
   "icons/icon-16.png",
   "icons/icon-32.png",
   "icons/icon-192.png",

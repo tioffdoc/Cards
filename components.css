@@ -63,7 +63,7 @@
 /* ---------- forms ---------- */
 label.field { display: flex; flex-direction: column; gap: 6px; }
 label.field span { font-size: var(--fs-caption); font-weight: 700; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .05em; }
-input[type="text"], input[type="number"], input[type="date"], textarea, select {
+input[type="text"], input[type="number"], input[type="date"], input[type="email"], input[type="password"], textarea, select {
   font-family: inherit;
   font-size: var(--fs-body);
   color: var(--ink);

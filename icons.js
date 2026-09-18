@@ -27,6 +27,9 @@ export const icons = {
   shuffle: wrap(`<path d="M4 7h3.5L16 17h4M4 17h3.5L11 13M16 7h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M17.5 4.5L20 7l-2.5 2.5M17.5 14.5L20 17l-2.5 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`),
   bookPlus: wrap(`<path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H19v18H7.5A2.5 2.5 0 0 0 5 22.5V4.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 9h4M12 7v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`),
   image: wrap(`<rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="10" r="1.6" stroke="currentColor" stroke-width="2"/><path d="M21 16l-5.5-5.5L4 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`),
+  cloud: wrap(`<path d="M7 18h10a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 7.1 9.1 4 4 0 0 0 7 18z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>`),
+  refresh: wrap(`<path d="M4 12a8 8 0 0 1 14-5.2M20 12a8 8 0 0 1-14 5.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M18 3v4.2h-4.2M6 21v-4.2h4.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`),
+  lock: wrap(`<rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`),
 };
 
 export function icon(name, extraClass = "") {
