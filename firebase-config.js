@@ -1,4 +1,4 @@
-// firebase-config.js — fill this in with YOUR OWN Firebase project's
+// firebase-config.js — fill this in with YOUR OWN Firebase project's 
 // config to turn on cloud sync (accounts + cross-device backup).
 //
 // Leave firebaseConfig as null to keep the app exactly as it was before —
@@ -14,4 +14,5 @@ export const firebaseConfig = {
   storageBucket: "flashcards-bdb06.firebasestorage.app",
   messagingSenderId: "829538130223",
   appId: "1:829538130223:web:e904689d8cd7e21f7f69da",
-};
+}; 
+
