@@ -1,4 +1,5 @@
 import * as db from "../db.js";
+import * as cloud from "../cloud.js";
 import { formatDate } from "../utils.js";
 import { icon } from "../icons.js";
 import { toast, confirmDialog } from "../ui.js";
@@ -70,6 +71,7 @@ export function renderSettingsSection(container) {
       </p>
       <p class="muted" style="font-size:var(--fs-caption);margin:0 0 12px">
         Syncing devices manually: export here, send yourself the file (AirDrop, email, iCloud/Google Drive), then Restore on the other device. Always export from whichever device has the newest data first — Restore replaces everything on the device you run it on.
+        ${cloud.isConfigured() ? " If you're signed in under Profile → Cloud sync, this is just a manual backup on top of automatic syncing — you don't need it for normal day-to-day use." : ""}
       </p>
       <div class="row" style="gap:10px">
         <button class="btn btn-secondary" id="exportBtn" style="flex:1">${icon("download")} Export</button>
@@ -138,6 +140,9 @@ export function renderSettingsSection(container) {
             const s = db.getSettings();
             applySettingsToDocument(s);
             toast("Backup restored");
+            // Push the restored data up to the cloud right away, if signed
+            // in, instead of waiting for the next individual edit to sync.
+            if (cloud.getCurrentUser()) cloud.syncNow().catch(() => {});
             goTo("home");
           },
         });
